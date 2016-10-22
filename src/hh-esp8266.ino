@@ -20,74 +20,70 @@ const int OUT_03 = 13;
 const String PAYLOAD_ON = "ON";
 const String PAYLOAD_OFF = "OFF";
 
+const int DEBOUNCER_INTERVAL = 40;
+
 HomieNode light01Node("light1", "light");
 HomieNode light02Node("light2", "light");
 HomieNode light03Node("light3", "light");
 
-int in01Status = -1;
-int in02Status = -1;
-int in03Status = -1;
+int in01LastState = -1;
+int in02LastState = -1;
+int in03LastState = -1;
 
 Bounce debouncer1 = Bounce();
+Bounce debouncer2 = Bounce();
+Bounce debouncer3 = Bounce();
 
 bool light01Handler(String value) {
-   if (value == PAYLOAD_ON) {
-     digitalWrite(OUT_01, HIGH);
-     Homie.setNodeProperty(light01Node, "state", PAYLOAD_ON);
-   } else if (value == PAYLOAD_OFF) {
-     digitalWrite(OUT_01, LOW);
-     Homie.setNodeProperty(light01Node, "state", PAYLOAD_OFF);
-   } else {
-     return false;
-   }
-  return true;
+  return lightHandler(light01Node, OUT_01, value);
 }
 
 bool light02Handler(String value) {
-  if (value == PAYLOAD_ON) {
-    digitalWrite(OUT_02, HIGH);
-    Homie.setNodeProperty(light02Node, "state", PAYLOAD_ON);
-  } else if (value == PAYLOAD_OFF) {
-    digitalWrite(OUT_02, LOW);
-    Homie.setNodeProperty(light02Node, "state", PAYLOAD_OFF);
-  } else {
-    return false;
-  }
- return true;
+  return lightHandler(light02Node, OUT_02, value);
 }
 
 bool light03Handler(String value) {
+  return lightHandler(light03Node, OUT_03, value);
+}
+
+bool lightHandler(HomieNode lightNode, int lightPin, String value)
+{
+  if (value != PAYLOAD_ON && value != PAYLOAD_OFF) return false;
+
   if (value == PAYLOAD_ON) {
-    digitalWrite(OUT_03, HIGH);
-    Homie.setNodeProperty(light03Node, "state", PAYLOAD_ON);
+    digitalWrite(lightPin, HIGH);
   } else if (value == PAYLOAD_OFF) {
-    digitalWrite(OUT_03, LOW);
-    Homie.setNodeProperty(light03Node, "state", PAYLOAD_OFF);
-  } else {
-    return false;
+    digitalWrite(lightPin, LOW);
   }
- return true;
+  Homie.setNodeProperty(lightNode, "state", value, true);
+  return true;
 }
 
 void loopInputHandler() {
-  int input_01 = debouncer1.read();
+  debouncer1.update();
+  debouncer2.update();
+  debouncer3.update();
 
-  if (in01Status != input_01) {
-    in01Status = input_01;
-    light01Handler( digitalRead(OUT_01) ? PAYLOAD_ON : PAYLOAD_OFF );
+  int input01 = debouncer1.read();
+  int input02 = debouncer2.read();
+  int input03 = debouncer3.read();
+
+  if (in01LastState != input01) {
+    in01LastState = input01;
+    light01Handler( (digitalRead(OUT_01) == 1) ? PAYLOAD_OFF : PAYLOAD_ON );
+  }
+  else if (in02LastState != input02) {
+    in02LastState = input02;
+    light02Handler( (digitalRead(OUT_02) == 1) ? PAYLOAD_OFF : PAYLOAD_ON );
+  }
+  else if (in03LastState != input03) {
+    in03LastState = input03;
+    light03Handler( digitalRead(OUT_03) ? PAYLOAD_OFF : PAYLOAD_ON );
   }
 }
 
 void setup() {
-  //Configure Inpunts
-  pinMode(IN_01, INPUT);
-  pinMode(IN_02, INPUT);
-  pinMode(IN_03, INPUT);
-
-  //Configure Outputs
-  pinMode(OUT_01, OUTPUT);
-  pinMode(OUT_02, OUTPUT);
-  pinMode(OUT_03, OUTPUT);
+  Serial.begin(115200);
 
   //--------------------------------------------------
   //Configure OTA Update
@@ -121,10 +117,26 @@ void setup() {
   ArduinoOTA.begin();
   Serial.println("OTA Ready");
 
+  //Configure Outputs
+  pinMode(OUT_01, OUTPUT);
+  pinMode(OUT_02, OUTPUT);
+  pinMode(OUT_03, OUTPUT);
+
+  //Configure Inpunts
+  pinMode(IN_01, INPUT);
+  pinMode(IN_02, INPUT);
+  pinMode(IN_03, INPUT);
+
   //Setup Inputs
   debouncer1.attach(IN_01);
-  debouncer1.interval(40);
-  Homie.setLoopFunction(loopInputHandler);
+  debouncer2.attach(IN_02);
+  debouncer3.attach(IN_03);
+  debouncer1.interval(DEBOUNCER_INTERVAL);
+  debouncer2.interval(DEBOUNCER_INTERVAL);
+  debouncer3.interval(DEBOUNCER_INTERVAL);
+  in01LastState = digitalRead(IN_01);
+  in02LastState = digitalRead(IN_02);
+  in03LastState = digitalRead(IN_03);
 
   //Setup Homie
   Homie.setFirmware(FW_NAME, FW_VERSION);
@@ -139,5 +151,6 @@ void setup() {
 
 void loop() {
   ArduinoOTA.handle();
+  loopInputHandler();
   Homie.loop();
 }
