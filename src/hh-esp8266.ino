@@ -17,22 +17,50 @@ const int OUT_01 = 14;
 const int OUT_02 = 12;
 const int OUT_03 = 13;
 
+Bounce debouncer1 = Bounce();
+Bounce debouncer2 = Bounce();
+Bounce debouncer3 = Bounce();
+
+//Parameters
 const String PAYLOAD_ON = "ON";
 const String PAYLOAD_OFF = "OFF";
 
+const int ON_SIGNAL = LOW;
+const int OFF_SIGNAL = HIGH;
+
 const int DEBOUNCER_INTERVAL = 40;
 
+//Nodes
 HomieNode light01Node("light1", "light");
 HomieNode light02Node("light2", "light");
 HomieNode light03Node("light3", "light");
 
+//Statuses
 int in01LastState = -1;
 int in02LastState = -1;
 int in03LastState = -1;
 
-Bounce debouncer1 = Bounce();
-Bounce debouncer2 = Bounce();
-Bounce debouncer3 = Bounce();
+bool mqttDisconnected = false;
+
+void onHomieEvent(HomieEvent event) {
+  switch(event) {
+    case HOMIE_MQTT_CONNECTED:
+      if (mqttDisconnected){
+        mqttDisconnected = false;
+        //Update all statuses in case it has changed in the meantime
+        Homie.setNodeProperty(light01Node, "state", ((digitalRead(OUT_01) == ON_SIGNAL) ? PAYLOAD_ON : PAYLOAD_OFF), true);
+        Homie.setNodeProperty(light02Node, "state", ((digitalRead(OUT_02) == ON_SIGNAL) ? PAYLOAD_ON : PAYLOAD_OFF), true);
+        Homie.setNodeProperty(light03Node, "state", ((digitalRead(OUT_03) == ON_SIGNAL) ? PAYLOAD_ON : PAYLOAD_OFF), true);
+      }
+      break;
+    case HOMIE_MQTT_DISCONNECTED:
+      mqttDisconnected = true;
+      break;
+    case HOMIE_WIFI_DISCONNECTED:
+      mqttDisconnected = true;
+    break;
+  }
+}
 
 bool light01Handler(String value) {
   return lightHandler(light01Node, OUT_01, value);
@@ -51,9 +79,9 @@ bool lightHandler(HomieNode lightNode, int lightPin, String value)
   if (value != PAYLOAD_ON && value != PAYLOAD_OFF) return false;
 
   if (value == PAYLOAD_ON) {
-    digitalWrite(lightPin, HIGH);
+    digitalWrite(lightPin, ON_SIGNAL);
   } else if (value == PAYLOAD_OFF) {
-    digitalWrite(lightPin, LOW);
+    digitalWrite(lightPin, OFF_SIGNAL);
   }
   Homie.setNodeProperty(lightNode, "state", value, true);
   return true;
@@ -70,15 +98,15 @@ void loopInputHandler() {
 
   if (in01LastState != input01) {
     in01LastState = input01;
-    light01Handler( (digitalRead(OUT_01) == 1) ? PAYLOAD_OFF : PAYLOAD_ON );
+    light01Handler( (digitalRead(OUT_01) == ON_SIGNAL ) ? PAYLOAD_OFF : PAYLOAD_ON );
   }
   else if (in02LastState != input02) {
     in02LastState = input02;
-    light02Handler( (digitalRead(OUT_02) == 1) ? PAYLOAD_OFF : PAYLOAD_ON );
+    light02Handler( (digitalRead(OUT_02) == ON_SIGNAL ) ? PAYLOAD_OFF : PAYLOAD_ON );
   }
   else if (in03LastState != input03) {
     in03LastState = input03;
-    light03Handler( digitalRead(OUT_03) ? PAYLOAD_OFF : PAYLOAD_ON );
+    light03Handler( (digitalRead(OUT_03) == ON_SIGNAL ) ? PAYLOAD_OFF : PAYLOAD_ON );
   }
 }
 
@@ -122,6 +150,11 @@ void setup() {
   pinMode(OUT_02, OUTPUT);
   pinMode(OUT_03, OUTPUT);
 
+  //Setup Outputs
+  digitalWrite(OUT_01, OFF_SIGNAL);
+  digitalWrite(OUT_02, OFF_SIGNAL);
+  digitalWrite(OUT_03, OFF_SIGNAL);
+
   //Configure Inpunts
   pinMode(IN_01, INPUT);
   pinMode(IN_02, INPUT);
@@ -146,6 +179,7 @@ void setup() {
   Homie.registerNode(light01Node);
   Homie.registerNode(light02Node);
   Homie.registerNode(light03Node);
+  Homie.onEvent(onHomieEvent);
   Homie.setup();
 }
 
